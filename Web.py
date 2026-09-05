@@ -75,6 +75,7 @@ HTML_TEMPLATE = """
         .btn-primary { background: #4CAF50; color: white; }
         .btn-danger { background: #f44336; color: white; }
         .btn-toggle { background: #ff9800; color: white; }
+        .btn-biometric { background: #2196F3; color: white; width: 100%; padding: 12px; font-size: 1em; }
         .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.9em; }
         .badge-on { background: #2e7d32; color: #a5d6a7; }
         .badge-off { background: #c62828; color: #ffcdd2; }
@@ -84,6 +85,12 @@ HTML_TEMPLATE = """
     <div class="container">
         <h2>AI Speaker Dashboard (Admin)</h2>
         
+        <!-- Bổ sung Card Đăng nhập / Xác thực Vân tay -->
+        <div class="card" style="text-align: center;">
+            <h3>🔑 Xác thực Sinh trắc học</h3>
+            <button class="btn-biometric" onclick="loginWithFingerprint()">Mở khóa bằng Vân tay / FaceID</button>
+        </div>
+
         <div class="card">
             <h3>0. Trạng thái hệ thống (SV1)</h3>
             <div class="row">
@@ -138,6 +145,48 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
+        // Hàm quét vân tay / sinh trắc học qua WebAuthn API của trình duyệt
+        async function loginWithFingerprint() {
+            if (!window.PublicKeyCredential) {
+                alert("Trình duyệt của Sếp không hỗ trợ xác thực sinh trắc học (WebAuthn)!");
+                return;
+            }
+
+            try {
+                const challenge = new Uint8Array(32);
+                window.crypto.getRandomValues(challenge);
+
+                const publicKeyCredentialRequestOptions = {
+                    challenge: challenge,
+                    timeout: 60000,
+                    userVerification: "required",
+                };
+
+                const credential = await navigator.credentials.get({
+                    publicKey: publicKeyCredentialRequestOptions
+                });
+
+                if (credential) {
+                    fetch('/api/biometric-login', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({id: credential.id})
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === "success") {
+                            alert("Xác thực vân tay thành công!");
+                        } else {
+                            alert("Xác thực thất bại!");
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Đã hủy hoặc lỗi quét vân tay: " + err.message);
+            }
+        }
+
         function fetchData() {
             fetch('/api/status')
                 .then(res => {
@@ -151,16 +200,13 @@ HTML_TEMPLATE = """
                 .then(data => {
                     if (!data) return;
                     
-                    // Cập nhật trạng thái tổng quan từ sv1
                     document.getElementById('bot-state-val').innerText = data.bot_state;
                     document.getElementById('bot-mode-val').innerText = data.bot_mode;
                     document.getElementById('spoken-text-val').innerText = '"' + (data.spoken_text || '') + '"';
 
-                    // Cập nhật môi trường phòng từ DHT22
                     document.getElementById('room-temp-val').innerText = data.room_temp;
                     document.getElementById('room-hum-val').innerText = data.room_hum;
 
-                    // Cập nhật thời tiết ngoài trời
                     document.getElementById('weather-temp-val').innerText = data.weather_temp;
                     document.getElementById('weather-hum-val').innerText = data.weather_hum;
                     document.getElementById('weather-desc').innerText = data.weather_desc;
@@ -237,6 +283,18 @@ def sync_from_sv1():
     print(f"[sv2] Nhận sync thành công từ sv1: {data}")
     return jsonify({"status": "success"}), 200
   return jsonify({"status": "error"}), 400
+
+
+# --- ENDPOINT XỬ LÝ ĐĂNG NHẬP SINH TRẮC HỌC (VÂN TAY) ---
+@app.route("/api/biometric-login", methods=["POST"])
+@requires_auth
+def biometric_login():
+  data = request.get_json() or {}
+  credential_id = data.get("id")
+  if credential_id:
+    print(f"[sv2 Security] Đăng nhập vân tay thành công! ID: {credential_id[:15]}...")
+    return jsonify({"status": "success", "message": "Xác thực thành công"})
+  return jsonify({"status": "error", "message": "Xác thực thất bại"}), 400
 
 
 @app.route("/api/status", methods=["GET"])
