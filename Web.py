@@ -11,14 +11,16 @@ HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 
 # --- CẤU HÌNH TÀI KHOẢN ĐĂNG NHẬP ADMIN ---
 ADMIN_USER = "admin"
-ADMIN_PASS = "123"
+ADMIN_PASS = "admin123"
 
-# Biến toàn cục lưu trữ dữ liệu thời tiết và trạng thái nhận chủ động từ sv1
+# Biến toàn cục lưu trữ dữ liệu môi trường phòng và trạng thái nhận từ sv1
 sv1_live_data = {
-    "temp": "--",
-    "hum": "--",
-    "weather_desc": "--",
-    "location": "HaNam",
+    "room_temp": "--",       # Nhiệt độ phòng (DHT22 từ sv1 đẩy sang)
+    "room_hum": "--",        # Độ ẩm phòng (DHT22 từ sv1 đẩy sang)
+    "weather_temp": "--",    # Nhiệt độ ngoài trời (wttr.in)
+    "weather_hum": "--",     # Độ ẩm ngoài trời (wttr.in)
+    "weather_desc": "--",    # Trạng thái thời tiết
+    "location": "HaNam",     # Khu vực
     "alarm_is_active": False,
     "alarm_hour": 6,
     "alarm_minute": 0,
@@ -73,10 +75,18 @@ HTML_TEMPLATE = """
         <h2>AI Speaker Dashboard (Admin)</h2>
         
         <div class="card">
-            <h3>1. Môi trường & Thời tiết từ SV1</h3>
+            <h3>1. Môi trường phòng (Cảm biến DHT22)</h3>
             <div class="row">
-                <span>Nhiệt độ: <strong id="temp-val">--</strong>°C</span>
-                <span>Độ ẩm: <strong id="hum-val">--</strong>%</span>
+                <span>Nhiệt độ phòng: <strong id="room-temp-val">--</strong>°C</span>
+                <span>Độ ẩm phòng: <strong id="room-hum-val">--</strong>%</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>2. Thời tiết ngoài trời</h3>
+            <div class="row">
+                <span>Nhiệt độ ngoài: <strong id="weather-temp-val">--</strong>°C</span>
+                <span>Độ ẩm ngoài: <strong id="weather-hum-val">--</strong>%</span>
             </div>
             <div class="row">
                 <span>Trạng thái: <strong id="weather-desc">--</strong></span>
@@ -85,7 +95,7 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="card">
-            <h3>2. Cài đặt Báo thức</h3>
+            <h3>3. Cài đặt Báo thức</h3>
             <div class="row">
                 <label>Thời gian báo thức:</label>
                 <input type="time" id="alarm-time-input">
@@ -98,7 +108,7 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="card">
-            <h3>3. Tính năng ẩn (Mode 5)</h3>
+            <h3>4. Tính năng ẩn (Mode 5)</h3>
             <div class="row">
                 <span>Trạng thái Mode 5: <span id="m5-status-text" class="status-badge badge-off">TẮT</span></span>
                 <button id="btn-m5" class="btn-toggle" onclick="toggleMode5()">Bật Mode 5</button>
@@ -119,8 +129,13 @@ HTML_TEMPLATE = """
                 })
                 .then(data => {
                     if (!data) return;
-                    document.getElementById('temp-val').innerText = data.temp;
-                    document.getElementById('hum-val').innerText = data.hum;
+                    // Cập nhật môi trường phòng từ DHT22 (sync từ sv1)
+                    document.getElementById('room-temp-val').innerText = data.room_temp;
+                    document.getElementById('room-hum-val').innerText = data.room_hum;
+
+                    // Cập nhật thời tiết ngoài trời
+                    document.getElementById('weather-temp-val').innerText = data.weather_temp;
+                    document.getElementById('weather-hum-val').innerText = data.weather_hum;
                     document.getElementById('weather-desc').innerText = data.weather_desc;
                     document.getElementById('weather-loc').innerText = data.location;
                     
@@ -187,7 +202,7 @@ def sync_from_sv1():
     global sv1_live_data
     if request.is_json:
         data = request.get_json()
-        # Cập nhật các trường dữ liệu được đẩy từ sv1 sang
+        # sv1 có thể đẩy các thông số phòng như {"room_temp": 28.5, "room_hum": 75} hoặc trạng thái khác
         for key in data:
             sv1_live_data[key] = data[key]
         print(f"[sv2] Nhận sync thành công từ sv1: {data}")
@@ -198,15 +213,14 @@ def sync_from_sv1():
 @app.route("/api/status", methods=["GET"])
 @requires_auth
 def api_status():
-    """Lấy dữ liệu trạng thái kết hợp gọi thời tiết JSON trực tiếp từ wttr.in (nếu cần) hoặc trả về cache từ sv1"""
+    """Lấy dữ liệu trạng thái kết hợp gọi thời tiết JSON trực tiếp từ wttr.in cho phần ngoài trời"""
     try:
-        # Chủ động gọi bóc tách JSON thời tiết từ wttr.in để hiển thị trực tiếp lên Dashboard sv2
         location = sv1_live_data.get("location", "HaNam")
         wttr_res = requests.get(f"https://wttr.in/{location}?format=j1", timeout=2)
         if wttr_res.status_code == 200:
             wttr_json = wttr_res.json()
-            sv1_live_data["temp"] = wttr_json["current_condition"][0]["temp_C"]
-            sv1_live_data["hum"] = wttr_json["current_condition"][0]["humidity"]
+            sv1_live_data["weather_temp"] = wttr_json["current_condition"][0]["temp_C"]
+            sv1_live_data["weather_hum"] = wttr_json["current_condition"][0]["humidity"]
             sv1_live_data["weather_desc"] = wttr_json["current_condition"][0]["weatherDesc"][0]["value"]
     except Exception as e:
         print(f"[sv2] Lỗi fetch wttr.in: {e}")
@@ -218,7 +232,6 @@ def api_status():
 def api_set_alarm():
     data = request.get_json()
     try:
-        # Bắn lệnh cấu hình báo thức từ sv2 sang sv1
         requests.post(f"{AI_SERVICE_URL}/api/set-alarm", json=data, headers=HEADERS, timeout=2)
         sv1_live_data["alarm_hour"] = data.get("hour")
         sv1_live_data["alarm_minute"] = data.get("minute")
@@ -231,7 +244,6 @@ def api_set_alarm():
 @requires_auth
 def api_stop_alarm():
     try:
-        # Bắn lệnh tắt chuông từ sv2 sang sv1
         requests.post(f"{AI_SERVICE_URL}/api/stop-alarm", headers=HEADERS, timeout=2)
         sv1_live_data["alarm_is_active"] = False
     except Exception as e:
@@ -242,7 +254,6 @@ def api_stop_alarm():
 @requires_auth
 def api_toggle_mode5():
     try:
-        # Bắn lệnh chuyển mode 5 từ sv2 sang sv1 và nhận trạng thái phản hồi
         res = requests.post(f"{AI_SERVICE_URL}/api/toggle-mode5", headers=HEADERS, timeout=2)
         res_data = res.json()
         sv1_live_data["mode_5_active"] = res_data.get("mode_5_active", False)
