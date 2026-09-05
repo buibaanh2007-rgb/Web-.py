@@ -20,7 +20,7 @@ ip_attempts = {}       # Đếm tổng số lần sai của từng IP
 ip_lockout_until = {}  # Thời gian hết hạn khóa 60s
 ip_banned = set()      # Danh sách các IP bị khóa vĩnh viễn
 
-# Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường (để trống hoặc mặc định -- để lưu giá trị thực tế cuối cùng)
+# Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường (giữ lại giá trị cuối cùng, mặc định ban đầu là -- nếu chưa có)
 sv1_live_data = {
     "event": "waiting",
     "spoken_text": "Chưa có tương tác",
@@ -248,7 +248,6 @@ HTML_TEMPLATE = """
                     document.getElementById('bot-mode-val').innerText = data.bot_mode;
                     document.getElementById('spoken-text-val').innerText = '"' + (data.spoken_text || '') + '"';
 
-                    // Cập nhật nhiệt độ độ ẩm phòng dựa trên dữ liệu thật cuối cùng được lưu trữ
                     document.getElementById('room-temp-val').innerText = data.room_temp;
                     document.getElementById('room-hum-val').innerText = data.room_hum;
 
@@ -377,10 +376,16 @@ def sync_from_sv1():
     global sv1_live_data
     if request.is_json:
         data = request.get_json()
-        for key in data:
-            # Cập nhật và lưu lại giữ liệu thực tế mới nhất (bao gồm cả room_temp, room_hum nếu sv1 gửi lên)
-            sv1_live_data[key] = data[key]
-        print(f"[sv2] Nhận sync thành công từ sv1: {data}")
+        for key, value in data.items():
+            # Chỉ cập nhật nếu gói tin gửi lên có chứa dữ liệu hợp lệ (không bị None, rỗng hoặc --)
+            if key in ["room_temp", "room_hum"]:
+                if value is not None and str(value).strip() != "" and str(value).strip() != "--":
+                    sv1_live_data[key] = value
+            else:
+                if value is not None:
+                    sv1_live_data[key] = value
+                    
+        print(f"[sv2] Nhận sync từ sv1 thành công. Lưu trữ hiện tại -> Phòng: {sv1_live_data.get('room_temp')}°C, {sv1_live_data.get('room_hum')}%")
         return jsonify({"status": "success"}), 200
     return jsonify({"status": "error"}), 400
 
