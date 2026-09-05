@@ -1,8 +1,9 @@
 from functools import wraps
-from flask import Flask, Response, jsonify, render_template_string, request
+from flask import Flask, Response, jsonify, render_template_string, request, session, redirect, url_for
 import requests
 
 app = Flask(__name__)
+app.secret_key = "iot_speaker_secret_key_2026"  # Khóa mã hóa phiên đăng nhập
 
 # --- CẤU HÌNH KẾT NỐI ---
 AI_SERVICE_URL = "http://127.0.0.1:8080"  # Địa chỉ của sv1
@@ -32,24 +33,63 @@ sv1_live_data = {
     "mode_5_active": False,
 }
 
-def check_auth(username, password):
-    return username == ADMIN_USER and password == ADMIN_PASS
-
-def authenticate():
-    return Response(
-        "Truy cập bị từ chối. Vui lòng đăng nhập tài khoản Admin!",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Login Required"'},
-    )
-
-def requires_auth(f):
+def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return authenticate()
+        if not session.get('logged_in'):
+            if request.path.startswith('/api/'):
+                return jsonify({"status": "unauthorized"}), 401
+            return redirect(url_for('login_page'))
         return f(*args, **kwargs)
     return decorated
+
+# GIAO DIỆN TRANG ĐĂNG NHẬP (CÓ Ô TÍCH CAPTCHA GIẢ LẬP)
+LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập - AI Speaker Admin</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #e0e0e0; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-card { background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; }
+        h2 { text-align: center; color: #4CAF50; margin-top: 0; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #90caf9; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 10px; background: #333; border: 1px solid #555; border-radius: 5px; color: #fff; box-sizing: border-box; }
+        .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: #2d2d2d; padding: 10px; border-radius: 5px; border: 1px solid #444; }
+        .checkbox-row input { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
+        .btn-submit { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; }
+        .btn-submit:hover { background: #45a049; }
+        .error { color: #f44336; text-align: center; margin-bottom: 15px; font-size: 0.9em; background: rgba(244,67,54,0.1); padding: 8px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h2>Admin Login</h2>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST">
+            <div class="form-group">
+                <label>Tài khoản:</label>
+                <input type="text" name="username" placeholder="Nhập admin..." required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Mật khẩu:</label>
+                <input type="password" name="password" placeholder="Nhập mật khẩu..." required>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="robot" name="robot_check" required>
+                <label for="robot" style="margin-bottom:0; cursor:pointer; color:#fff; font-size:0.95em;">Tôi không phải người máy</label>
+            </div>
+            <button type="submit" class="btn-submit">Đăng Nhập</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -61,7 +101,9 @@ HTML_TEMPLATE = """
     <style>
         body { font-family: Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
         .container { max-width: 520px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        h2 { text-align: center; color: #4CAF50; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        h2 { text-align: center; color: #4CAF50; margin: 0; flex-grow: 1; }
+        .btn-logout { background: #f44336; color: white; padding: 6px 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 0.85em; font-weight: bold; text-decoration: none; }
         .card { background: #2d2d2d; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
         .card h3 { margin-top: 0; font-size: 1.1em; color: #90caf9; }
         .row { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; }
@@ -77,7 +119,10 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h2>AI Speaker Dashboard (Admin)</h2>
+        <div class="header-row">
+            <h2>AI Speaker Dashboard</h2>
+            <a href="/logout" class="btn-logout">Đăng xuất</a>
+        </div>
         
         <div class="card">
             <h3>0. Trạng thái hệ thống (SV1)</h3>
@@ -137,8 +182,8 @@ HTML_TEMPLATE = """
             fetch('/api/status')
                 .then(res => {
                     if (res.status === 401) {
-                        alert("Phiên đăng nhập hết hạn hoặc chưa xác thực!");
-                        location.reload();
+                        alert("Phiên đăng nhập hết hạn!");
+                        window.location.href = '/login';
                         return;
                     }
                     return res.json();
@@ -211,8 +256,31 @@ HTML_TEMPLATE = """
 </html>
 """
 
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        robot_check = request.form.get("robot_check") # Lấy trạng thái ô tích
+        
+        if not robot_check:
+            error = "Vui lòng xác nhận bạn không phải người máy!"
+        elif username == ADMIN_USER and password == ADMIN_PASS:
+            session['logged_in'] = True
+            return redirect(url_for('dashboard'))
+        else:
+            error = "Sai tài khoản hoặc mật khẩu!"
+            
+    return render_template_string(LOGIN_TEMPLATE, error=error)
+
+@app.route("/logout")
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login_page'))
+
 @app.route("/")
-@requires_auth
+@login_required
 def dashboard():
     return render_template_string(HTML_TEMPLATE)
 
@@ -228,7 +296,7 @@ def sync_from_sv1():
     return jsonify({"status": "error"}), 400
 
 @app.route("/api/status", methods=["GET"])
-@requires_auth
+@login_required
 def api_status():
     try:
         location = sv1_live_data.get("location", "HaNam")
@@ -243,7 +311,7 @@ def api_status():
     return jsonify(sv1_live_data)
 
 @app.route("/api/set-alarm", methods=["POST"])
-@requires_auth
+@login_required
 def api_set_alarm():
     data = request.get_json()
     try:
@@ -262,7 +330,7 @@ def api_set_alarm():
     return jsonify({"status": "success"})
 
 @app.route("/api/stop-alarm", methods=["POST"])
-@requires_auth
+@login_required
 def api_stop_alarm():
     try:
         requests.post(f"{AI_SERVICE_URL}/api/stop-alarm", headers=HEADERS, timeout=2)
@@ -273,7 +341,7 @@ def api_stop_alarm():
     return jsonify({"status": "success"})
 
 @app.route("/api/toggle-mode5", methods=["POST"])
-@requires_auth
+@login_required
 def api_toggle_mode5():
     try:
         res = requests.post(
