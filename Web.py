@@ -63,6 +63,10 @@ LOGIN_TEMPLATE = """
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #90caf9; }
         input[type="text"], input[type="password"] { width: 100%; padding: 10px; background: #333; border: 1px solid #555; border-radius: 5px; color: #fff; box-sizing: border-box; }
+        .password-wrapper { position: relative; }
+        .password-wrapper input { width: 100%; padding-right: 40px; box-sizing: border-box; }
+        .toggle-password { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.1em; padding: 0; }
+        .toggle-password:hover { color: #fff; }
         .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: #2d2d2d; padding: 10px; border-radius: 5px; border: 1px solid #444; }
         .checkbox-row input { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
         .btn-submit { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; }
@@ -83,7 +87,10 @@ LOGIN_TEMPLATE = """
             </div>
             <div class="form-group">
                 <label>Mật khẩu:</label>
-                <input type="password" name="password" placeholder="Nhập mật khẩu..." required>
+                <div class="password-wrapper">
+                    <input type="password" id="password-field" name="password" placeholder="Nhập mật khẩu..." required>
+                    <button type="button" class="toggle-password" id="toggle-btn" onclick="togglePassword()">👁️</button>
+                </div>
             </div>
             <div class="checkbox-row">
                 <input type="checkbox" id="robot" name="robot_check" required>
@@ -92,6 +99,20 @@ LOGIN_TEMPLATE = """
             <button type="submit" class="btn-submit">Đăng Nhập</button>
         </form>
     </div>
+
+    <script>
+        function togglePassword() {
+            let pwdInput = document.getElementById('password-field');
+            let btn = document.getElementById('toggle-btn');
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                btn.innerText = '🙈'; // Đổi icon thành nhắm mắt
+            } else {
+                pwdInput.type = 'password';
+                btn.innerText = '👁️'; // Đổi icon thành mở mắt
+            }
+        }
+    </script>
 </body>
 </html>
 """
@@ -266,17 +287,14 @@ def login_page():
     error = None
     client_ip = request.remote_addr
 
-    # 1. Kiểm tra xem IP có đang bị ban vĩnh viễn không
     if client_ip in ip_banned:
         return render_template_string(LOGIN_TEMPLATE, error="IP của bạn đã bị KHÓA VĨNH VIỄN do nhập sai quá nhiều lần!")
 
-    # 2. Kiểm tra xem IP có đang trong thời gian phạt khóa 60s không
     if client_ip in ip_lockout_until:
         remaining = int(ip_lockout_until[client_ip] - time.time())
         if remaining > 0:
             return render_template_string(LOGIN_TEMPLATE, error=f"Bạn đã nhập sai quá 3 lần. Vui lòng chờ {remaining} giây nữa!")
         else:
-            # Hết giờ phạt thì xóa trạng thái khóa tạm thời
             ip_lockout_until.pop(client_ip, None)
 
     if request.method == "POST":
@@ -287,22 +305,18 @@ def login_page():
         if not robot_check:
             error = "Vui lòng xác nhận bạn không phải người máy!"
         elif username == ADMIN_USER and password == ADMIN_PASS:
-            # Đăng nhập thành công -> Reset toàn bộ lỗi của IP này
             ip_attempts.pop(client_ip, None)
             ip_lockout_until.pop(client_ip, None)
             session['logged_in'] = True
             return redirect(url_for('dashboard'))
         else:
-            # Tăng số lần đếm sai của IP
             ip_attempts[client_ip] = ip_attempts.get(client_ip, 0) + 1
             fails = ip_attempts[client_ip]
 
             if fails >= 6:
-                # Sai tiếp 3 lần sau khi mở khóa -> Khóa vĩnh viễn IP
                 ip_banned.add(client_ip)
                 error = "Bạn đã nhập sai quá nhiều lần. IP này đã bị KHÓA VĨNH VIỄN!"
             elif fails == 3:
-                # Sai đủ 3 lần đầu -> Khóa 60 giây
                 ip_lockout_until[client_ip] = time.time() + 60
                 error = "Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong 60 giây."
             else:
