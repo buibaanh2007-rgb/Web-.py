@@ -20,7 +20,7 @@ ip_attempts = {}       # Đếm tổng số lần sai của từng IP
 ip_lockout_until = {}  # Thời gian hết hạn khóa 60s
 ip_banned = set()      # Danh sách các IP bị khóa vĩnh viễn
 
-# Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường
+# Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường (để trống hoặc mặc định -- để lưu giá trị thực tế cuối cùng)
 sv1_live_data = {
     "event": "waiting",
     "spoken_text": "Chưa có tương tác",
@@ -114,7 +114,6 @@ LOGIN_TEMPLATE = """
             }
         }
 
-        // Kịch bản đếm ngược thời gian thực trên JS nếu bị khóa tạm thời
         let remainingSeconds = {{ remaining_seconds|default(0) }};
         if (remainingSeconds > 0) {
             let errorDiv = document.getElementById('error-msg');
@@ -133,7 +132,6 @@ LOGIN_TEMPLATE = """
                     errorDiv.style.background = "rgba(76, 175, 80, 0.1)";
                     errorDiv.style.color = "#4CAF50";
                     
-                    // Mở khóa lại form cho người dùng nhập
                     usernameField.disabled = false;
                     passwordField.disabled = false;
                     robotCheckbox.disabled = false;
@@ -250,6 +248,7 @@ HTML_TEMPLATE = """
                     document.getElementById('bot-mode-val').innerText = data.bot_mode;
                     document.getElementById('spoken-text-val').innerText = '"' + (data.spoken_text || '') + '"';
 
+                    // Cập nhật nhiệt độ độ ẩm phòng dựa trên dữ liệu thật cuối cùng được lưu trữ
                     document.getElementById('room-temp-val').innerText = data.room_temp;
                     document.getElementById('room-hum-val').innerText = data.room_hum;
 
@@ -329,7 +328,7 @@ def login_page():
             error = f"Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong {remaining_seconds} giây."
         else:
             ip_lockout_until.pop(client_ip, None)
-            ip_attempts[client_ip] = 0 # Xóa bộ đếm sai sau khi hết hạn khóa để chơi lại từ đầu
+            ip_attempts[client_ip] = 0
 
     if request.method == "POST" and not is_locked:
         username = request.form.get("username")
@@ -379,6 +378,7 @@ def sync_from_sv1():
     if request.is_json:
         data = request.get_json()
         for key in data:
+            # Cập nhật và lưu lại giữ liệu thực tế mới nhất (bao gồm cả room_temp, room_hum nếu sv1 gửi lên)
             sv1_live_data[key] = data[key]
         print(f"[sv2] Nhận sync thành công từ sv1: {data}")
         return jsonify({"status": "success"}), 200
