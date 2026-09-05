@@ -71,6 +71,7 @@ LOGIN_TEMPLATE = """
         .checkbox-row input { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
         .btn-submit { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; }
         .btn-submit:hover { background: #45a049; }
+        .btn-submit:disabled { background: #555; color: #888; cursor: not-allowed; }
         .error { color: #f44336; text-align: center; margin-bottom: 15px; font-size: 0.9em; background: rgba(244,67,54,0.1); padding: 8px; border-radius: 4px; }
     </style>
 </head>
@@ -78,25 +79,25 @@ LOGIN_TEMPLATE = """
     <div class="login-card">
         <h2>Admin Login</h2>
         {% if error %}
-        <div class="error">{{ error }}</div>
+        <div class="error" id="error-msg">{{ error }}</div>
         {% endif %}
-        <form method="POST">
+        <form method="POST" id="login-form">
             <div class="form-group">
                 <label>Tài khoản:</label>
-                <input type="text" name="username" placeholder="Nhập admin..." required autocomplete="off">
+                <input type="text" id="username-field" name="username" placeholder="Nhập admin..." required autocomplete="off" {{ "disabled" if locked else "" }}>
             </div>
             <div class="form-group">
                 <label>Mật khẩu:</label>
                 <div class="password-wrapper">
-                    <input type="password" id="password-field" name="password" placeholder="Nhập mật khẩu..." required>
+                    <input type="password" id="password-field" name="password" placeholder="Nhập mật khẩu..." required {{ "disabled" if locked else "" }}>
                     <button type="button" class="toggle-password" id="toggle-btn" onclick="togglePassword()">👁️</button>
                 </div>
             </div>
             <div class="checkbox-row">
-                <input type="checkbox" id="robot" name="robot_check" required>
+                <input type="checkbox" id="robot" name="robot_check" {{ "disabled" if locked else "" }} required>
                 <label for="robot" style="margin-bottom:0; cursor:pointer; color:#fff; font-size:0.95em;">Tôi không phải người máy</label>
             </div>
-            <button type="submit" class="btn-submit">Đăng Nhập</button>
+            <button type="submit" id="submit-btn" class="btn-submit" {{ "disabled" if locked else "" }}>Đăng Nhập</button>
         </form>
     </div>
 
@@ -106,11 +107,39 @@ LOGIN_TEMPLATE = """
             let btn = document.getElementById('toggle-btn');
             if (pwdInput.type === 'password') {
                 pwdInput.type = 'text';
-                btn.innerText = '🙈'; // Đổi icon thành nhắm mắt
+                btn.innerText = '🙈';
             } else {
                 pwdInput.type = 'password';
-                btn.innerText = '👁️'; // Đổi icon thành mở mắt
+                btn.innerText = '👁️';
             }
+        }
+
+        // Kịch bản đếm ngược thời gian thực trên JS nếu bị khóa tạm thời
+        let remainingSeconds = {{ remaining_seconds|default(0) }};
+        if (remainingSeconds > 0) {
+            let errorDiv = document.getElementById('error-msg');
+            let usernameField = document.getElementById('username-field');
+            let passwordField = document.getElementById('password-field');
+            let robotCheckbox = document.getElementById('robot');
+            let submitBtn = document.getElementById('submit-btn');
+
+            let countdownTimer = setInterval(function() {
+                remainingSeconds--;
+                if (remainingSeconds > 0) {
+                    errorDiv.innerText = "Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong " + remainingSeconds + " giây.";
+                } else {
+                    clearInterval(countdownTimer);
+                    errorDiv.innerText = "Đã hết thời gian khóa. Vui lòng thử lại!";
+                    errorDiv.style.background = "rgba(76, 175, 80, 0.1)";
+                    errorDiv.style.color = "#4CAF50";
+                    
+                    // Mở khóa lại form cho người dùng nhập
+                    usernameField.disabled = false;
+                    passwordField.disabled = false;
+                    robotCheckbox.disabled = false;
+                    submitBtn.disabled = false;
+                }
+            }, 1000);
         }
     </script>
 </body>
@@ -286,18 +315,23 @@ HTML_TEMPLATE = """
 def login_page():
     error = None
     client_ip = request.remote_addr
+    remaining_seconds = 0
+    is_locked = False
 
     if client_ip in ip_banned:
-        return render_template_string(LOGIN_TEMPLATE, error="IP của bạn đã bị KHÓA VĨNH VIỄN do nhập sai quá nhiều lần!")
+        return render_template_string(LOGIN_TEMPLATE, error="IP của bạn đã bị KHÓA VĨNH VIỄN do nhập sai quá nhiều lần!", locked=True, remaining_seconds=0)
 
     if client_ip in ip_lockout_until:
         remaining = int(ip_lockout_until[client_ip] - time.time())
         if remaining > 0:
-            return render_template_string(LOGIN_TEMPLATE, error=f"Bạn đã nhập sai quá 3 lần. Vui lòng chờ {remaining} giây nữa!")
+            remaining_seconds = remaining
+            is_locked = True
+            error = f"Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong {remaining_seconds} giây."
         else:
             ip_lockout_until.pop(client_ip, None)
+            ip_attempts[client_ip] = 0 # Xóa bộ đếm sai sau khi hết hạn khóa để chơi lại từ đầu
 
-    if request.method == "POST":
+    if request.method == "POST" and not is_locked:
         username = request.form.get("username")
         password = request.form.get("password")
         robot_check = request.form.get("robot_check")
@@ -315,15 +349,19 @@ def login_page():
 
             if fails >= 6:
                 ip_banned.add(client_ip)
+                is_locked = True
                 error = "Bạn đã nhập sai quá nhiều lần. IP này đã bị KHÓA VĨNH VIỄN!"
             elif fails == 3:
-                ip_lockout_until[client_ip] = time.time() + 60
-                error = "Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong 60 giây."
+                lock_duration = 60
+                ip_lockout_until[client_ip] = time.time() + lock_duration
+                remaining_seconds = lock_duration
+                is_locked = True
+                error = f"Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong {remaining_seconds} giây."
             else:
                 remaining_tries = 3 if fails < 3 else (6 - fails)
                 error = f"Sai tài khoản hoặc mật khẩu! (Bạn còn {remaining_tries} lần thử trước khi bị khóa)."
             
-    return render_template_string(LOGIN_TEMPLATE, error=error)
+    return render_template_string(LOGIN_TEMPLATE, error=error, locked=is_locked, remaining_seconds=remaining_seconds)
 
 @app.route("/logout")
 def logout():
