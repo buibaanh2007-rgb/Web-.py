@@ -75,10 +75,13 @@ LOGIN_TEMPLATE = """
             box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
             width: 320px; 
         }
-        h2 { text-align: center; color: #2a5298; margin-top: 0; }
+        
+        /* Chữ "Admin Login" đổi sang màu xanh lá */
+        h2 { text-align: center; color: #4CAF50; margin-top: 0; }
+        
         .form-group { margin-bottom: 15px; }
         
-        /* Chữ "Tài khoản" và "Mật khẩu" đổi sang màu vàng */
+        /* Chữ "Tài khoản" và "Mật khẩu" giữ nguyên màu vàng */
         label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #b78103; font-weight: bold; }
         
         input[type="text"], input[type="password"] { width: 100%; padding: 10px; background: #f9f9f9; border: 1px solid #ccc; border-radius: 5px; color: #333; box-sizing: border-box; }
@@ -89,11 +92,12 @@ LOGIN_TEMPLATE = """
         .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: #f1f5f9; padding: 10px; border-radius: 5px; border: 1px solid #cbd5e1; }
         .checkbox-row input { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
         
-        /* Chữ "Tôi không phải là robot" chuyển thành màu đỏ */
+        /* Chữ "Tôi không phải là robot" giữ màu đỏ */
         .robot-label { margin-bottom: 0; cursor: pointer; color: #ff5252 !important; font-size: 0.95em; font-weight: bold; }
         
-        .btn-submit { width: 100%; padding: 10px; background: #2a5298; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; }
-        .btn-submit:hover { background: #1e3c72; }
+        /* Nút Đăng Nhập màu xanh lá */
+        .btn-submit { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; }
+        .btn-submit:hover { background: #43a047; }
         .btn-submit:disabled { background: #ccc; color: #666; cursor: not-allowed; }
         .error { color: #f44336; text-align: center; margin-bottom: 15px; font-size: 0.9em; background: rgba(244,67,54,0.1); padding: 8px; border-radius: 4px; }
     </style>
