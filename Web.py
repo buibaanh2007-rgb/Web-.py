@@ -57,21 +57,44 @@ LOGIN_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Đăng nhập - AI Speaker Admin</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #e0e0e0; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .login-card { background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; }
-        h2 { text-align: center; color: #4CAF50; margin-top: 0; }
+        /* Phông nền kết hợp hài hòa giữa màu xanh da trời và trắng/sáng nhẹ */
+        body { 
+            font-family: Arial, sans-serif; 
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #e0e6ed 100%); 
+            color: #333; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+        }
+        .login-card { 
+            background: #ffffff; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
+            width: 320px; 
+        }
+        h2 { text-align: center; color: #2a5298; margin-top: 0; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #90caf9; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 10px; background: #333; border: 1px solid #555; border-radius: 5px; color: #fff; box-sizing: border-box; }
+        
+        /* Chữ "Tài khoản" và "Mật khẩu" đổi sang màu vàng */
+        label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #b78103; font-weight: bold; }
+        
+        input[type="text"], input[type="password"] { width: 100%; padding: 10px; background: #f9f9f9; border: 1px solid #ccc; border-radius: 5px; color: #333; box-sizing: border-box; }
         .password-wrapper { position: relative; }
         .password-wrapper input { width: 100%; padding-right: 40px; box-sizing: border-box; }
         .toggle-password { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.1em; padding: 0; }
-        .toggle-password:hover { color: #fff; }
-        .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: #2d2d2d; padding: 10px; border-radius: 5px; border: 1px solid #444; }
+        .toggle-password:hover { color: #333; }
+        .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: #f1f5f9; padding: 10px; border-radius: 5px; border: 1px solid #cbd5e1; }
         .checkbox-row input { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
-        .btn-submit { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; }
-        .btn-submit:hover { background: #45a049; }
-        .btn-submit:disabled { background: #555; color: #888; cursor: not-allowed; }
+        
+        /* Chữ "Tôi không phải là robot" chuyển thành màu đỏ */
+        .robot-label { margin-bottom: 0; cursor: pointer; color: #ff5252 !important; font-size: 0.95em; font-weight: bold; }
+        
+        .btn-submit { width: 100%; padding: 10px; background: #2a5298; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; }
+        .btn-submit:hover { background: #1e3c72; }
+        .btn-submit:disabled { background: #ccc; color: #666; cursor: not-allowed; }
         .error { color: #f44336; text-align: center; margin-bottom: 15px; font-size: 0.9em; background: rgba(244,67,54,0.1); padding: 8px; border-radius: 4px; }
     </style>
 </head>
@@ -95,7 +118,7 @@ LOGIN_TEMPLATE = """
             </div>
             <div class="checkbox-row">
                 <input type="checkbox" id="robot" name="robot_check" {{ "disabled" if locked else "" }} required>
-                <label for="robot" style="margin-bottom:0; cursor:pointer; color:#fff; font-size:0.95em;">Tôi không phải người máy</label>
+                <label for="robot" class="robot-label">Tôi không phải là robot</label>
             </div>
             <button type="submit" id="submit-btn" class="btn-submit" {{ "disabled" if locked else "" }}>Đăng Nhập</button>
         </form>
