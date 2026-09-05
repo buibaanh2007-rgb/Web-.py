@@ -1,10 +1,38 @@
-from flask import Flask, jsonify, render_template_string, request
+from functools import wraps
+from flask import Flask, jsonify, render_template_string, request, Response
 import requests
 
 app = Flask(__name__)
 
-# Địa chỉ kết nối nội bộ sang AI.py trên cổng 8080
 AI_SERVICE_URL = "http://127.0.0.1:8080"
+API_KEY = "iot_secure_token_2026"
+HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
+
+# --- CẤU HÌNH TÀI KHOẢN ĐĂNG NHẬP ADMIN ---
+ADMIN_USER = "admin"
+ADMIN_PASS = "admin123"  # Mày có thể đổi mật khẩu ở đây
+
+def check_auth(username, password):
+    """Kiểm tra tên đăng nhập và mật khẩu có đúng không"""
+    return username == ADMIN_USER and password == ADMIN_PASS
+
+def authenticate():
+    """Gửi yêu cầu bật popup đăng nhập của trình duyệt"""
+    return Response(
+        'Truy cập bị từ chối. Vui lòng đăng nhập tài khoản Admin!', 401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+    )
+
+def requires_auth(f):
+    """Decorator bảo vệ các route yêu cầu đăng nhập"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
+
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -12,7 +40,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Speaker Dashboard</title>
+    <title>AI Speaker Dashboard (Secure Admin)</title>
     <style>
         body { font-family: Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
         .container { max-width: 500px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
@@ -32,9 +60,8 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h2>AI Speaker Control Panel (Web)</h2>
+        <h2>AI Speaker Control Panel (Admin)</h2>
         
-        <!-- 1. Dòng nhiệt độ phòng -->
         <div class="card">
             <h3>1. Môi trường phòng</h3>
             <div class="row">
@@ -43,7 +70,6 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- 2. Chức năng đặt và quản lý báo thức -->
         <div class="card">
             <h3>2. Cài đặt Báo thức</h3>
             <div class="row">
@@ -57,7 +83,6 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- 3. Nút bật/tắt Mode 5 -->
         <div class="card">
             <h3>3. Tính năng ẩn (Mode 5)</h3>
             <div class="row">
@@ -70,8 +95,16 @@ HTML_TEMPLATE = """
     <script>
         function fetchData() {
             fetch('/api/status')
-                .then(res => res.json())
+                .then(res => {
+                    if (res.status === 401) {
+                        alert("Phiên đăng nhập hết hạn hoặc chưa xác thực!");
+                        location.reload();
+                        return;
+                    }
+                    return res.json();
+                })
                 .then(data => {
+                    if (!data) return;
                     document.getElementById('temp-val').innerText = data.temp;
                     document.getElementById('hum-val').innerText = data.hum;
                     
@@ -106,7 +139,9 @@ HTML_TEMPLATE = """
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({hour: parseInt(parts[0]), minute: parseInt(parts[1])})
-            }).then(() => { alert("Đã cập nhật báo thức!"); fetchData(); });
+            }).then(res => {
+                if(res.ok) { alert("Đã cập nhật báo thức!"); fetchData(); }
+            });
         }
 
         function stopAlarm() {
@@ -124,16 +159,16 @@ HTML_TEMPLATE = """
 </html>
 """
 
-
 @app.route("/")
+@requires_auth
 def dashboard():
     return render_template_string(HTML_TEMPLATE)
 
-
 @app.route("/api/status", methods=["GET"])
+@requires_auth
 def api_status():
     try:
-        res = requests.get(f"{AI_SERVICE_URL}/api/status", timeout=2)
+        res = requests.get(f"{AI_SERVICE_URL}/api/status", headers=HEADERS, timeout=2)
         return jsonify(res.json())
     except Exception:
         return jsonify({
@@ -145,34 +180,33 @@ def api_status():
             "mode_5_active": False,
         })
 
-
 @app.route("/api/set-alarm", methods=["POST"])
+@requires_auth
 def api_set_alarm():
     data = request.get_json()
     try:
-        requests.post(f"{AI_SERVICE_URL}/api/set-alarm", json=data, timeout=2)
+        requests.post(f"{AI_SERVICE_URL}/api/set-alarm", json=data, headers=HEADERS, timeout=2)
     except Exception:
         pass
     return jsonify({"status": "success"})
-
 
 @app.route("/api/stop-alarm", methods=["POST"])
+@requires_auth
 def api_stop_alarm():
     try:
-        requests.post(f"{AI_SERVICE_URL}/api/stop-alarm", timeout=2)
+        requests.post(f"{AI_SERVICE_URL}/api/stop-alarm", headers=HEADERS, timeout=2)
     except Exception:
         pass
     return jsonify({"status": "success"})
 
-
 @app.route("/api/toggle-mode5", methods=["POST"])
+@requires_auth
 def api_toggle_mode5():
     try:
-        res = requests.post(f"{AI_SERVICE_URL}/api/toggle-mode5", timeout=2)
+        res = requests.post(f"{AI_SERVICE_URL}/api/toggle-mode5", headers=HEADERS, timeout=2)
         return jsonify(res.json())
     except Exception:
         return jsonify({"status": "error", "mode_5_active": False})
 
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=9090, debug=True)
+    app.run(host="0.0.0.0", port=9090, debug=False)
