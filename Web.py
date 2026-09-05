@@ -57,18 +57,52 @@ LOGIN_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Đăng nhập - AI Speaker Admin</title>
     <style>
-        /* Phông nền kết hợp hài hòa giữa màu xanh da trời và trắng/sáng nhẹ */
+        /* Phông nền xanh da trời kết hợp hiệu ứng mây trôi */
         body { 
             font-family: Arial, sans-serif; 
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #e0e6ed 100%); 
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #6dd5ed 100%); 
             color: #333; 
             display: flex; 
             justify-content: center; 
             align-items: center; 
             height: 100vh; 
             margin: 0; 
+            overflow: hidden;
+            position: relative;
         }
-        
+
+        /* Hiệu ứng mây bồng bềnh trôi từ trái sang phải */
+        .cloud {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 100px;
+            animation: drift linear infinite;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .cloud::before, .cloud::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+        }
+        .cloud-1 { width: 120px; height: 40px; top: 15%; left: -150px; animation-duration: 25s; }
+        .cloud-1::before { width: 50px; height: 50px; top: -25px; left: 20px; }
+        .cloud-1::after { width: 60px; height: 60px; top: -35px; left: 50px; }
+
+        .cloud-2 { width: 180px; height: 60px; top: 60%; left: -200px; animation-duration: 35s; animation-delay: -10s; }
+        .cloud-2::before { width: 80px; height: 80px; top: -40px; left: 30px; }
+        .cloud-2::after { width: 70px; height: 70px; top: -30px; left: 90px; }
+
+        .cloud-3 { width: 90px; height: 30px; top: 80%; left: -120px; animation-duration: 20s; animation-delay: -5s; }
+        .cloud-3::before { width: 40px; height: 40px; top: -20px; left: 15px; }
+        .cloud-3::after { width: 45px; height: 45px; top: -25px; left: 35px; }
+
+        @keyframes drift {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(calc(100vw + 250px)); }
+        }
+
         /* Khung Admin Login trong suốt (Hiệu ứng kính mờ Glassmorphism) */
         .login-card { 
             background: rgba(255, 255, 255, 0.15); 
@@ -79,6 +113,7 @@ LOGIN_TEMPLATE = """
             border: 1px solid rgba(255, 255, 255, 0.3); 
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); 
             width: 320px; 
+            z-index: 2;
         }
         
         /* Chữ "Admin Login" màu xanh lá */
@@ -100,8 +135,8 @@ LOGIN_TEMPLATE = """
         .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: rgba(255, 255, 255, 0.2); padding: 10px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.3); }
         .checkbox-row input { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
         
-        /* Chữ "Tôi không phải là robot" màu đỏ */
-        .robot-label { margin-bottom: 0; cursor: pointer; color: #ff5252 !important; font-size: 0.95em; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        /* Chữ "Tôi không phải là robot" đổi sang màu cam */
+        .robot-label { margin-bottom: 0; cursor: pointer; color: #ff9800 !important; font-size: 0.95em; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         
         /* Nút Đăng Nhập màu xanh lá */
         .btn-submit { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
@@ -111,6 +146,11 @@ LOGIN_TEMPLATE = """
     </style>
 </head>
 <body>
+    <!-- Các đám mây trôi nền sau -->
+    <div class="cloud cloud-1"></div>
+    <div class="cloud cloud-2"></div>
+    <div class="cloud cloud-3"></div>
+
     <div class="login-card">
         <h2>Admin Login</h2>
         {% if error %}
