@@ -1,9 +1,10 @@
 from functools import wraps
+import time
 from flask import Flask, Response, jsonify, render_template_string, request, session, redirect, url_for
 import requests
 
 app = Flask(__name__)
-app.secret_key = "iot_speaker_secret_key_2026"  # Khóa mã hóa phiên đăng nhập
+app.secret_key = "iot_speaker_secret_key_2026"
 
 # --- CẤU HÌNH KẾT NỐI ---
 AI_SERVICE_URL = "http://127.0.0.1:8080"  # Địa chỉ của sv1
@@ -13,6 +14,11 @@ HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 # --- CẤU HÌNH TÀI KHOẢN ĐĂNG NHẬP ADMIN ---
 ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
+
+# --- HỆ THỐNG CHỐNG BRUTE-FORCE (QUẢN LÝ THEO IP) ---
+ip_attempts = {}       # Đếm tổng số lần sai của từng IP
+ip_lockout_until = {}  # Thời gian hết hạn khóa 60s
+ip_banned = set()      # Danh sách các IP bị khóa vĩnh viễn
 
 # Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường
 sv1_live_data = {
@@ -43,7 +49,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# GIAO DIỆN TRANG ĐĂNG NHẬP (CÓ Ô TÍCH CAPTCHA GIẢ LẬP)
 LOGIN_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="vi">
@@ -259,18 +264,50 @@ HTML_TEMPLATE = """
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
     error = None
+    client_ip = request.remote_addr
+
+    # 1. Kiểm tra xem IP có đang bị ban vĩnh viễn không
+    if client_ip in ip_banned:
+        return render_template_string(LOGIN_TEMPLATE, error="IP của bạn đã bị KHÓA VĨNH VIỄN do nhập sai quá nhiều lần!")
+
+    # 2. Kiểm tra xem IP có đang trong thời gian phạt khóa 60s không
+    if client_ip in ip_lockout_until:
+        remaining = int(ip_lockout_until[client_ip] - time.time())
+        if remaining > 0:
+            return render_template_string(LOGIN_TEMPLATE, error=f"Bạn đã nhập sai quá 3 lần. Vui lòng chờ {remaining} giây nữa!")
+        else:
+            # Hết giờ phạt thì xóa trạng thái khóa tạm thời
+            ip_lockout_until.pop(client_ip, None)
+
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
-        robot_check = request.form.get("robot_check") # Lấy trạng thái ô tích
+        robot_check = request.form.get("robot_check")
         
         if not robot_check:
             error = "Vui lòng xác nhận bạn không phải người máy!"
         elif username == ADMIN_USER and password == ADMIN_PASS:
+            # Đăng nhập thành công -> Reset toàn bộ lỗi của IP này
+            ip_attempts.pop(client_ip, None)
+            ip_lockout_until.pop(client_ip, None)
             session['logged_in'] = True
             return redirect(url_for('dashboard'))
         else:
-            error = "Sai tài khoản hoặc mật khẩu!"
+            # Tăng số lần đếm sai của IP
+            ip_attempts[client_ip] = ip_attempts.get(client_ip, 0) + 1
+            fails = ip_attempts[client_ip]
+
+            if fails >= 6:
+                # Sai tiếp 3 lần sau khi mở khóa -> Khóa vĩnh viễn IP
+                ip_banned.add(client_ip)
+                error = "Bạn đã nhập sai quá nhiều lần. IP này đã bị KHÓA VĨNH VIỄN!"
+            elif fails == 3:
+                # Sai đủ 3 lần đầu -> Khóa 60 giây
+                ip_lockout_until[client_ip] = time.time() + 60
+                error = "Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong 60 giây."
+            else:
+                remaining_tries = 3 if fails < 3 else (6 - fails)
+                error = f"Sai tài khoản hoặc mật khẩu! (Bạn còn {remaining_tries} lần thử trước khi bị khóa)."
             
     return render_template_string(LOGIN_TEMPLATE, error=error)
 
