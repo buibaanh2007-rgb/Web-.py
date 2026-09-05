@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import Flask, jsonify, render_template_string, request, Response
+from flask import Flask, Response, jsonify, render_template_string, request
 import requests
 
 app = Flask(__name__)
@@ -13,37 +13,47 @@ HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
-# Biến toàn cục lưu trữ dữ liệu môi trường phòng và trạng thái nhận từ sv1
+# Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường
 sv1_live_data = {
-    "room_temp": "--",       # Nhiệt độ phòng (DHT22 từ sv1 đẩy sang)
-    "room_hum": "--",        # Độ ẩm phòng (DHT22 từ sv1 đẩy sang)
-    "weather_temp": "--",    # Nhiệt độ ngoài trời (wttr.in)
-    "weather_hum": "--",     # Độ ẩm ngoài trời (wttr.in)
-    "weather_desc": "--",    # Trạng thái thời tiết
-    "location": "HaNam",     # Khu vực
-    "alarm_is_active": False,
-    "alarm_hour": 6,
-    "alarm_minute": 0,
-    "mode_5_active": False
+    "event": "waiting",
+    "spoken_text": "Chưa có tương tác",
+    "bot_state": "NGU",
+    "bot_mode": "DEFAULT",
+    "alarm_state": "OFF",
+    "alarm_hour": "--",
+    "alarm_minute": "--",
+    "alarm_period": "",
+    "room_temp": "--",
+    "room_hum": "--",
+    "weather_temp": "--",
+    "weather_hum": "--",
+    "weather_desc": "--",
+    "location": "HaNam",
+    "mode_5_active": False,
 }
 
+
 def check_auth(username, password):
-    return username == ADMIN_USER and password == ADMIN_PASS
+  return username == ADMIN_USER and password == ADMIN_PASS
+
 
 def authenticate():
-    return Response(
-        'Truy cập bị từ chối. Vui lòng đăng nhập tài khoản Admin!', 401,
-        {'WWW-Authenticate': 'Basic realm="Login Required"'}
-    )
+  return Response(
+      "Truy cập bị từ chối. Vui lòng đăng nhập tài khoản Admin!",
+      401,
+      {"WWW-Authenticate": 'Basic realm="Login Required"'},
+  )
+
 
 def requires_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return authenticate()
-        return f(*args, **kwargs)
-    return decorated
+  @wraps(f)
+  def decorated(*args, **kwargs):
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+      return authenticate()
+    return f(*args, **kwargs)
+
+  return decorated
 
 
 HTML_TEMPLATE = """
@@ -55,7 +65,7 @@ HTML_TEMPLATE = """
     <title>AI Speaker Dashboard (Secure Admin)</title>
     <style>
         body { font-family: Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
-        .container { max-width: 500px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .container { max-width: 520px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         h2 { text-align: center; color: #4CAF50; }
         .card { background: #2d2d2d; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
         .card h3 { margin-top: 0; font-size: 1.1em; color: #90caf9; }
@@ -74,6 +84,17 @@ HTML_TEMPLATE = """
     <div class="container">
         <h2>AI Speaker Dashboard (Admin)</h2>
         
+        <div class="card">
+            <h3>0. Trạng thái hệ thống (SV1)</h3>
+            <div class="row">
+                <span>Trạng thái Bot: <strong id="bot-state-val">--</strong></span>
+                <span>Chế độ: <strong id="bot-mode-val">--</strong></span>
+            </div>
+            <div class="row">
+                <span>Lệnh gần nhất: <strong id="spoken-text-val" style="color: #ffeb3b;">--</strong></span>
+            </div>
+        </div>
+
         <div class="card">
             <h3>1. Môi trường phòng (Cảm biến DHT22)</h3>
             <div class="row">
@@ -129,7 +150,13 @@ HTML_TEMPLATE = """
                 })
                 .then(data => {
                     if (!data) return;
-                    // Cập nhật môi trường phòng từ DHT22 (sync từ sv1)
+                    
+                    // Cập nhật trạng thái tổng quan từ sv1
+                    document.getElementById('bot-state-val').innerText = data.bot_state;
+                    document.getElementById('bot-mode-val').innerText = data.bot_mode;
+                    document.getElementById('spoken-text-val').innerText = '"' + (data.spoken_text || '') + '"';
+
+                    // Cập nhật môi trường phòng từ DHT22
                     document.getElementById('room-temp-val').innerText = data.room_temp;
                     document.getElementById('room-hum-val').innerText = data.room_hum;
 
@@ -140,8 +167,10 @@ HTML_TEMPLATE = """
                     document.getElementById('weather-loc').innerText = data.location;
                     
                     let statusText = document.getElementById('alarm-status-text');
-                    if (data.alarm_is_active) {
-                        statusText.innerText = "ĐANG BẬT (" + data.alarm_hour + ":" + String(data.alarm_minute).padStart(2, '0') + ")";
+                    if (data.alarm_state === "ON" || data.alarm_is_active) {
+                        let h = data.alarm_hour !== undefined ? data.alarm_hour : '--';
+                        let m = data.alarm_minute !== undefined ? String(data.alarm_minute).padStart(2, '0') : '--';
+                        statusText.innerText = "ĐANG BẬT (" + h + ":" + m + ")";
                         statusText.className = "status-badge badge-on";
                     } else {
                         statusText.innerText = "ĐANG TẮT";
@@ -150,7 +179,7 @@ HTML_TEMPLATE = """
 
                     let m5Text = document.getElementById('m5-status-text');
                     let m5Btn = document.getElementById('btn-m5');
-                    if (data.mode_5_active) {
+                    if (data.mode_5_active || data.bot_mode === "SET_MODE_5") {
                         m5Text.innerText = "ĐANG BẬT";
                         m5Text.className = "status-badge badge-on";
                         m5Btn.innerText = "Tắt Mode 5";
@@ -190,77 +219,94 @@ HTML_TEMPLATE = """
 </html>
 """
 
+
 @app.route("/")
 @requires_auth
 def dashboard():
-    return render_template_string(HTML_TEMPLATE)
+  return render_template_string(HTML_TEMPLATE)
 
 
 # --- ENDPOINT NHẬN DATA BẮN TỪ SV1 SANG SV2 ---
 @app.route("/api/sync", methods=["POST"])
 def sync_from_sv1():
-    global sv1_live_data
-    if request.is_json:
-        data = request.get_json()
-        # sv1 có thể đẩy các thông số phòng như {"room_temp": 28.5, "room_hum": 75} hoặc trạng thái khác
-        for key in data:
-            sv1_live_data[key] = data[key]
-        print(f"[sv2] Nhận sync thành công từ sv1: {data}")
-        return jsonify({"status": "success"}), 200
-    return jsonify({"status": "error"}), 400
+  global sv1_live_data
+  if request.is_json:
+    data = request.get_json()
+    for key in data:
+      sv1_live_data[key] = data[key]
+    print(f"[sv2] Nhận sync thành công từ sv1: {data}")
+    return jsonify({"status": "success"}), 200
+  return jsonify({"status": "error"}), 400
 
 
 @app.route("/api/status", methods=["GET"])
 @requires_auth
 def api_status():
-    """Lấy dữ liệu trạng thái kết hợp gọi thời tiết JSON trực tiếp từ wttr.in cho phần ngoài trời"""
-    try:
-        location = sv1_live_data.get("location", "HaNam")
-        wttr_res = requests.get(f"https://wttr.in/{location}?format=j1", timeout=2)
-        if wttr_res.status_code == 200:
-            wttr_json = wttr_res.json()
-            sv1_live_data["weather_temp"] = wttr_json["current_condition"][0]["temp_C"]
-            sv1_live_data["weather_hum"] = wttr_json["current_condition"][0]["humidity"]
-            sv1_live_data["weather_desc"] = wttr_json["current_condition"][0]["weatherDesc"][0]["value"]
-    except Exception as e:
-        print(f"[sv2] Lỗi fetch wttr.in: {e}")
+  """Lấy dữ liệu trạng thái kết hợp gọi thời tiết JSON trực tiếp từ wttr.in"""
+  try:
+    location = sv1_live_data.get("location", "HaNam")
+    wttr_res = requests.get(f"https://wttr.in/{location}?format=j1", timeout=2)
+    if wttr_res.status_code == 200:
+      wttr_json = wttr_res.json()
+      sv1_live_data["weather_temp"] = wttr_json["current_condition"][0]["temp_C"]
+      sv1_live_data["weather_hum"] = wttr_json["current_condition"][0]["humidity"]
+      sv1_live_data["weather_desc"] = wttr_json["current_condition"][0][
+          "weatherDesc"
+      ][0]["value"]
+  except Exception as e:
+    print(f"[sv2] Lỗi fetch wttr.in: {e}")
 
-    return jsonify(sv1_live_data)
+  return jsonify(sv1_live_data)
+
 
 @app.route("/api/set-alarm", methods=["POST"])
 @requires_auth
 def api_set_alarm():
-    data = request.get_json()
-    try:
-        requests.post(f"{AI_SERVICE_URL}/api/set-alarm", json=data, headers=HEADERS, timeout=2)
-        sv1_live_data["alarm_hour"] = data.get("hour")
-        sv1_live_data["alarm_minute"] = data.get("minute")
-        sv1_live_data["alarm_is_active"] = True
-    except Exception as e:
-        print(f"[sv2 -> sv1] Lỗi set alarm: {e}")
-    return jsonify({"status": "success"})
+  data = request.get_json()
+  try:
+    requests.post(
+        f"{AI_SERVICE_URL}/api/set-alarm",
+        json=data,
+        headers=HEADERS,
+        timeout=2,
+    )
+    sv1_live_data["alarm_hour"] = data.get("hour")
+    sv1_live_data["alarm_minute"] = data.get("minute")
+    sv1_live_data["alarm_is_active"] = True
+    sv1_live_data["alarm_state"] = "ON"
+  except Exception as e:
+    print(f"[sv2 -> sv1] Lỗi set alarm: {e}")
+  return jsonify({"status": "success"})
+
 
 @app.route("/api/stop-alarm", methods=["POST"])
 @requires_auth
 def api_stop_alarm():
-    try:
-        requests.post(f"{AI_SERVICE_URL}/api/stop-alarm", headers=HEADERS, timeout=2)
-        sv1_live_data["alarm_is_active"] = False
-    except Exception as e:
-        print(f"[sv2 -> sv1] Lỗi stop alarm: {e}")
-    return jsonify({"status": "success"})
+  try:
+    requests.post(f"{AI_SERVICE_URL}/api/stop-alarm", headers=HEADERS, timeout=2)
+    sv1_live_data["alarm_is_active"] = False
+    sv1_live_data["alarm_state"] = "OFF"
+  except Exception as e:
+    print(f"[sv2 -> sv1] Lỗi stop alarm: {e}")
+  return jsonify({"status": "success"})
+
 
 @app.route("/api/toggle-mode5", methods=["POST"])
 @requires_auth
 def api_toggle_mode5():
-    try:
-        res = requests.post(f"{AI_SERVICE_URL}/api/toggle-mode5", headers=HEADERS, timeout=2)
-        res_data = res.json()
-        sv1_live_data["mode_5_active"] = res_data.get("mode_5_active", False)
-        return jsonify(res_data)
-    except Exception as e:
-        print(f"[sv2 -> sv1] Lỗi toggle mode 5: {e}")
-        return jsonify({"status": "error", "mode_5_active": False})
+  try:
+    res = requests.post(
+        f"{AI_SERVICE_URL}/api/toggle-mode5", headers=HEADERS, timeout=2
+    )
+    res_data = res.json()
+    sv1_live_data["mode_5_active"] = res_data.get("mode_5_active", False)
+    if sv1_live_data["mode_5_active"]:
+      sv1_live_data["bot_mode"] = "SET_MODE_5"
+    return jsonify(res_data)
+  except Exception as e:
+    print(f"[sv2 -> sv1] Lỗi toggle mode 5: {e}")
+    return jsonify({"status": "error", "mode_5_active": False})
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=9090, debug=False)
+  app.run(host="0.0.0.0", port=9090, debug=False)
