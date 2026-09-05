@@ -5,7 +5,7 @@ import requests
 app = Flask(__name__)
 
 # --- CẤU HÌNH KẾT NỐI ---
-AI_SERVICE_URL = "http://127.0.0.1:8080"  # Địa chỉ của sv1
+AI_SERVICE_URL = "http://127.0.0.1:8080" 
 API_KEY = "iot_secure_token_2026"
 HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 
