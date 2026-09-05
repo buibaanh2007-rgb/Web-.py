@@ -1,14 +1,10 @@
+import requests
 from flask import Flask, jsonify, render_template_string, request
 
 app = Flask(__name__)
 
-# Trạng thái hiển thị trên Web (có thể kết nối sang API của AI.py nếu cần)
-web_temp = "25.0"
-web_hum = "50.0"
-web_alarm_is_active = False
-web_alarm_hour = 6
-web_alarm_minute = 0
-web_mode_5_active = False
+# Địa chỉ kết nối nội bộ sang AI.py trên Termux
+AI_SERVICE_URL = "http://127.0.0.1:8080"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -131,44 +127,54 @@ HTML_TEMPLATE = """
 
 @app.route("/")
 def dashboard():
-    return render_template_string(HTML_TEMPLATE)
+  return render_template_string(HTML_TEMPLATE)
 
 
 @app.route("/api/status", methods=["GET"])
 def api_status():
+  try:
+    # Lấy dữ liệu trực tiếp từ AI.py (cổng 8080)
+    res = requests.get(f"{AI_SERVICE_URL}/api/status", timeout=2)
+    return jsonify(res.json())
+  except Exception:
+    # Trả về giá trị mặc định nếu AI.py chưa khởi động
     return jsonify({
-        "temp": web_temp,
-        "hum": web_hum,
-        "alarm_is_active": web_alarm_is_active,
-        "alarm_hour": web_alarm_hour,
-        "alarm_minute": web_alarm_minute,
-        "mode_5_active": web_mode_5_active,
+        "temp": "--",
+        "hum": "--",
+        "alarm_is_active": False,
+        "alarm_hour": 6,
+        "alarm_minute": 0,
+        "mode_5_active": False,
     })
 
 
 @app.route("/api/set-alarm", methods=["POST"])
 def api_set_alarm():
-    global web_alarm_hour, web_alarm_minute, web_alarm_is_active
-    data = request.get_json()
-    web_alarm_hour = data.get("hour", 6)
-    web_alarm_minute = data.get("minute", 0)
-    web_alarm_is_active = True
-    return jsonify({"status": "success"})
+  data = request.get_json()
+  try:
+    requests.post(f"{AI_SERVICE_URL}/api/set-alarm", json=data, timeout=2)
+  except Exception:
+    pass
+  return jsonify({"status": "success"})
 
 
 @app.route("/api/stop-alarm", methods=["POST"])
 def api_stop_alarm():
-    global web_alarm_is_active
-    web_alarm_is_active = False
-    return jsonify({"status": "success"})
+  try:
+    requests.post(f"{AI_SERVICE_URL}/api/stop-alarm", timeout=2)
+  except Exception:
+    pass
+  return jsonify({"status": "success"})
 
 
 @app.route("/api/toggle-mode5", methods=["POST"])
 def api_toggle_mode5():
-    global web_mode_5_active
-    web_mode_5_active = not web_mode_5_active
-    return jsonify({"status": "success", "mode_5_active": web_mode_5_active})
+  try:
+    res = requests.post(f"{AI_SERVICE_URL}/api/toggle-mode5", timeout=2)
+    return jsonify(res.json())
+  except Exception:
+    return jsonify({"status": "error", "mode_5_active": False})
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=9090, debug=True)
+  app.run(host="0.0.0.0", port=9090, debug=True)
