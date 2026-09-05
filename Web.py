@@ -68,38 +68,46 @@ LOGIN_TEMPLATE = """
             height: 100vh; 
             margin: 0; 
         }
+        
+        /* Khung Admin Login trong suốt (Hiệu ứng kính mờ Glassmorphism) */
         .login-card { 
-            background: #ffffff; 
+            background: rgba(255, 255, 255, 0.15); 
+            backdrop-filter: blur(12px); 
+            -webkit-backdrop-filter: blur(12px); 
             padding: 30px; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
+            border-radius: 16px; 
+            border: 1px solid rgba(255, 255, 255, 0.3); 
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); 
             width: 320px; 
         }
         
-        /* Chữ "Admin Login" đổi sang màu xanh lá */
-        h2 { text-align: center; color: #4CAF50; margin-top: 0; }
+        /* Chữ "Admin Login" màu xanh lá */
+        h2 { text-align: center; color: #4CAF50; margin-top: 0; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         
         .form-group { margin-bottom: 15px; }
         
-        /* Chữ "Tài khoản" và "Mật khẩu" giữ nguyên màu vàng */
-        label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #b78103; font-weight: bold; }
+        /* Chữ "Tài khoản" và "Mật khẩu" màu vàng */
+        label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #ffeb3b; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
         
-        input[type="text"], input[type="password"] { width: 100%; padding: 10px; background: #f9f9f9; border: 1px solid #ccc; border-radius: 5px; color: #333; box-sizing: border-box; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.8); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 5px; color: #333; box-sizing: border-box; }
+        input[type="text"]:focus, input[type="password"]:focus { background: #ffffff; outline: none; border-color: #4CAF50; }
+        
         .password-wrapper { position: relative; }
         .password-wrapper input { width: 100%; padding-right: 40px; box-sizing: border-box; }
-        .toggle-password { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.1em; padding: 0; }
-        .toggle-password:hover { color: #333; }
-        .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: #f1f5f9; padding: 10px; border-radius: 5px; border: 1px solid #cbd5e1; }
+        .toggle-password { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #555; cursor: pointer; font-size: 1.1em; padding: 0; }
+        .toggle-password:hover { color: #000; }
+        
+        .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: rgba(255, 255, 255, 0.2); padding: 10px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.3); }
         .checkbox-row input { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
         
-        /* Chữ "Tôi không phải là robot" giữ màu đỏ */
-        .robot-label { margin-bottom: 0; cursor: pointer; color: #ff5252 !important; font-size: 0.95em; font-weight: bold; }
+        /* Chữ "Tôi không phải là robot" màu đỏ */
+        .robot-label { margin-bottom: 0; cursor: pointer; color: #ff5252 !important; font-size: 0.95em; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         
         /* Nút Đăng Nhập màu xanh lá */
-        .btn-submit { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; }
+        .btn-submit { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
         .btn-submit:hover { background: #43a047; }
-        .btn-submit:disabled { background: #ccc; color: #666; cursor: not-allowed; }
-        .error { color: #f44336; text-align: center; margin-bottom: 15px; font-size: 0.9em; background: rgba(244,67,54,0.1); padding: 8px; border-radius: 4px; }
+        .btn-submit:disabled { background: rgba(204, 204, 204, 0.5); color: #666; cursor: not-allowed; }
+        .error { color: #ff5252; text-align: center; margin-bottom: 15px; font-size: 0.9em; background: rgba(0, 0, 0, 0.3); padding: 8px; border-radius: 4px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -156,7 +164,7 @@ LOGIN_TEMPLATE = """
                 } else {
                     clearInterval(countdownTimer);
                     errorDiv.innerText = "Đã hết thời gian khóa. Vui lòng thử lại!";
-                    errorDiv.style.background = "rgba(76, 175, 80, 0.1)";
+                    errorDiv.style.background = "rgba(0, 0, 0, 0.3)";
                     errorDiv.style.color = "#4CAF50";
                     
                     usernameField.disabled = false;
