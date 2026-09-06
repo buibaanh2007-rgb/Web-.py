@@ -1,5 +1,7 @@
 from functools import wraps
 import time
+import json
+import os
 from flask import Flask, Response, jsonify, render_template_string, request, session, redirect, url_for
 import requests
 
@@ -15,10 +17,30 @@ HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
+# --- HỆ THỐNG GHI NHẬN THIẾT BỊ KHÔNG AN TOÀN & CẤM VĨNH VIỄN ---
+BANNED_IPS_FILE = "banned_ips.json"
+
+def load_banned_ips():
+    if os.path.exists(BANNED_IPS_FILE):
+        try:
+            with open(BANNED_IPS_FILE, "r") as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
+
+def save_banned_ips():
+    try:
+        with open(BANNED_IPS_FILE, "w") as f:
+            json.dump(list(ip_banned), f)
+    except Exception as e:
+        print(f"[sv2] Lỗi lưu file thiết bị cấm: {e}")
+
 # --- HỆ THỐNG CHỐNG BRUTE-FORCE (QUẢN LÝ THEO IP) ---
-ip_attempts = {}       # Đếm tổng số lần sai của từng IP
+ip_attempts = {}       # Đếm tổng số lần sai trong chu kỳ hiện tại
 ip_lockout_until = {}  # Thời gian hết hạn khóa 60s
-ip_banned = set()      # Danh sách các IP bị khóa vĩnh viễn
+ip_phase = {}          # Theo dõi giai đoạn: 0 = chu kỳ 3 lần đầu, 1 = chu kỳ 2 lần cuối sau khi hết 60s
+ip_banned = load_banned_ips() # Tự động nạp danh sách thiết bị cấm vĩnh viễn từ file
 
 # Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường (giữ lại giá trị cuối cùng, mặc định ban đầu là -- nếu chưa có)
 sv1_live_data = {
@@ -391,9 +413,11 @@ def login_page():
     remaining_seconds = 0
     is_locked = False
 
+    # 1. Kiểm tra xem IP đã bị khóa vĩnh viễn chưa
     if client_ip in ip_banned:
         return render_template_string(LOGIN_TEMPLATE, error="IP của bạn đã bị KHÓA VĨNH VIỄN do nhập sai quá nhiều lần!", locked=True, remaining_seconds=0)
 
+    # 2. Kiểm tra xem IP có đang trong thời gian khóa tạm thời 60s không
     if client_ip in ip_lockout_until:
         remaining = int(ip_lockout_until[client_ip] - time.time())
         if remaining > 0:
@@ -401,9 +425,12 @@ def login_page():
             is_locked = True
             error = f"Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong {remaining_seconds} giây."
         else:
+            # Hết 60 giây -> Xóa mốc thời gian khóa, chuyển sang phase 1 (chỉ còn 2 lần thử)
             ip_lockout_until.pop(client_ip, None)
-            ip_attempts[client_ip] = 0
+            ip_phase[client_ip] = 1      # Đánh dấu đang ở giai đoạn 2 (2 lần cuối)
+            ip_attempts[client_ip] = 0   # Reset lại số đếm để tính từ 0 cho 2 lần cuối
 
+    # 3. Xử lý khi bấm nút Đăng nhập (POST)
     if request.method == "POST" and not is_locked:
         username = request.form.get("username")
         password = request.form.get("password")
@@ -412,27 +439,41 @@ def login_page():
         if not robot_check:
             error = "Vui lòng xác nhận bạn không phải người máy!"
         elif username == ADMIN_USER and password == ADMIN_PASS:
+            # Đăng nhập đúng -> Xóa sạch toàn bộ lịch sử phạt của IP này
             ip_attempts.pop(client_ip, None)
             ip_lockout_until.pop(client_ip, None)
+            ip_phase.pop(client_ip, None)
             session['logged_in'] = True
             return redirect(url_for('dashboard'))
         else:
+            # Đăng nhập sai -> Tăng số lần sai lên
             ip_attempts[client_ip] = ip_attempts.get(client_ip, 0) + 1
             fails = ip_attempts[client_ip]
+            current_phase = ip_phase.get(client_ip, 0)
 
-            if fails >= 6:
-                ip_banned.add(client_ip)
-                is_locked = True
-                error = "Bạn đã nhập sai quá nhiều lần. IP này đã bị KHÓA VĨNH VIỄN!"
-            elif fails == 3:
-                lock_duration = 60
-                ip_lockout_until[client_ip] = time.time() + lock_duration
-                remaining_seconds = lock_duration
-                is_locked = True
-                error = f"Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong {remaining_seconds} giây."
+            if current_phase == 0:
+                # Giai đoạn 1: 3 lần đầu tiên
+                if fails >= 3:
+                    lock_duration = 60
+                    ip_lockout_until[client_ip] = time.time() + lock_duration
+                    remaining_seconds = lock_duration
+                    is_locked = True
+                    error = f"Sai 3 lần! Tài khoản bị khóa tạm thời trong {remaining_seconds} giây. Sau khi hết giờ bạn sẽ chỉ còn 2 lần thử cuối."
+                else:
+                    remaining_tries = 3 - fails 
+                    error = f"Sai tài khoản hoặc mật khẩu! (Bạn còn {remaining_tries} lần thử trước khi bị khóa tạm thời)."
             else:
-                remaining_tries = 3 - fails 
-                error = f"Sai tài khoản hoặc mật khẩu! (Bạn còn {remaining_tries} lần thử trước khi bị khóa)."
+                # Giai đoạn 2: Sau khi hết 60s, chỉ còn 2 lần thử cuối
+                if fails >= 2:
+                    # Sai nốt 2 lần này -> Khóa vĩnh viễn và ghi file JSON!
+                    ip_banned.add(client_ip)
+                    save_banned_ips()
+                    is_locked = True
+                    error = "Phát hiện thiết bị không an toàn! Thiết bị này đã bị khóa VĨNH VIỄN."
+                    print(f"[sv2 SECURITY] Thiết bị {client_ip} đã bị cấm vĩnh viễn do sai liên tiếp ở giai đoạn cuối.")
+                else:
+                    remaining_tries = 2 - fails
+                    error = f"Cảnh báo! Bạn chỉ còn {remaining_tries} lần thử cuối cùng trước khi thiết bị bị khóa vĩnh viễn."
             
     return render_template_string(LOGIN_TEMPLATE, error=error, locked=is_locked, remaining_seconds=remaining_seconds)
 
