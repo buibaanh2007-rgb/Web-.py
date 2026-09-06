@@ -177,7 +177,7 @@ LOGIN_TEMPLATE = """
             </div>
             <div class="checkbox-row">
                 <input type="checkbox" id="robot" name="robot_check" {{ "disabled" if locked else "" }} required>
-                <label for="robot" class="robot-label">Tôi không phải là robot</label>
+                <label for="robot" class="robot-label">Tôi không phải người máy</label>
             </div>
             <button type="submit" id="submit-btn" class="btn-submit {{ btn_class }}" {{ "disabled" if locked and not is_banned else "" }}>
                 {{ "ĐANG BỊ KHÓA" if locked else "Đăng Nhập" }}
@@ -216,10 +216,10 @@ LOGIN_TEMPLATE = """
             let countdownTimer = setInterval(function() {
                 remainingSeconds--;
                 if (remainingSeconds > 0) {
-                    errorDiv.innerText = "Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong " + remainingSeconds + " giây.";
+                    errorDiv.innerText = "Sai 3 lần! Thiết bị của bạn bị khóa trong " + remainingSeconds + " giây.";
                 } else {
                     clearInterval(countdownTimer);
-                    errorDiv.innerText = "Đã hết thời gian khóa. Bạn còn 2 lần thử cuối (Nút đã chuyển sang màu đỏ)!";
+                    errorDiv.innerText = "Đã hết thời gian khóa. Bạn chỉ còn 2 lần thử cuối!";
                     errorDiv.style.background = "rgba(0, 0, 0, 0.3)";
                     errorDiv.style.color = "#ff5252";
                     
@@ -228,7 +228,7 @@ LOGIN_TEMPLATE = """
                     robotCheckbox.disabled = false;
                     submitBtn.disabled = false;
                     submitBtn.className = "btn-submit btn-red";
-                    submitBtn.innerText = "Đăng Nhập (2 lần cuối)";
+                    submitBtn.innerText = "Đăng Nhập ";
                 }
             }, 1000);
         }
@@ -282,10 +282,10 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="card">
-            <h3>1. Môi trường phòng (Cảm biến DHT22)</h3>
+            <h3>1.Nhiệt Độ Phòng</h3>
             <div class="row">
-                <span>Nhiệt độ phòng: <strong id="room-temp-val">--</strong>°C</span>
-                <span>Độ ẩm phòng: <strong id="room-hum-val">--</strong>%</span>
+                <span>Nhiệt độ: <strong id="room-temp-val">--</strong>°C</span>
+                <span>Độ ẩm : <strong id="room-hum-val">--</strong>%</span>
             </div>
         </div>
 
@@ -475,11 +475,11 @@ def login_page():
                     is_locked = True
                     is_banned = True
                     btn_class = "btn-flash-red"
-                    error = "Phát hiện thiết bị không an toàn! Thiết bị này đã bị khóa VĨNH VIỄN."
+                    error = "THIẾT BỊ ĐÃ BỊ CẤM VĨNH VIỄN."
                 else:
                     btn_class = "btn-red"
                     remaining_tries = 2 - fails
-                    error = f"Cảnh báo! Bạn chỉ còn {remaining_tries} lần thử cuối cùng trước khi thiết bị bị khóa vĩnh viễn."
+                    error = f"Cảnh báo! Bạn chỉ còn {remaining_tries} lần thử cuối cùng trước khi thiết bị bị cấm vĩnh viễn."
 
     return render_template_string(LOGIN_TEMPLATE, error=error, locked=is_locked, is_banned=is_banned, remaining_seconds=remaining_seconds, btn_class=btn_class)
 
