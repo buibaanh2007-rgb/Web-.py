@@ -431,7 +431,7 @@ def login_page():
                 is_locked = True
                 error = f"Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong {remaining_seconds} giây."
             else:
-                remaining_tries = 3 if fails < 3 else (6 - fails)
+                remaining_tries = 3 - fails 
                 error = f"Sai tài khoản hoặc mật khẩu! (Bạn còn {remaining_tries} lần thử trước khi bị khóa)."
             
     return render_template_string(LOGIN_TEMPLATE, error=error, locked=is_locked, remaining_seconds=remaining_seconds)
