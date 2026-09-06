@@ -1,7 +1,5 @@
 from functools import wraps
 import time
-import json
-import os
 from flask import Flask, Response, jsonify, render_template_string, request, session, redirect, url_for
 import requests
 
@@ -17,32 +15,13 @@ HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
-# --- HỆ THỐNG GHI NHẬN THIẾT BỊ KHÔNG AN TOÀN & CẤM VĨNH VIỄN ---
-BANNED_IPS_FILE = "banned_ips.json"
-
-def load_banned_ips():
-    if os.path.exists(BANNED_IPS_FILE):
-        try:
-            with open(BANNED_IPS_FILE, "r") as f:
-                return set(json.load(f))
-        except:
-            return set()
-    return set()
-
-def save_banned_ips():
-    try:
-        with open(BANNED_IPS_FILE, "w") as f:
-            json.dump(list(ip_banned), f)
-    except Exception as e:
-        print(f"[sv2] Lỗi lưu file thiết bị cấm: {e}")
-
-# --- HỆ THỐNG CHỐNG BRUTE-FORCE (QUẢN LÝ THEO IP) ---
+# --- HỆ THỐNG CHỐNG BRUTE-FORCE (LƯU TRÊN RAM - TỰ ĐỘNG XÓA KHI RESTART SERVER) ---
 ip_attempts = {}       # Đếm tổng số lần sai trong chu kỳ hiện tại
 ip_lockout_until = {}  # Thời gian hết hạn khóa 60s
 ip_phase = {}          # Theo dõi giai đoạn: 0 = chu kỳ 3 lần đầu, 1 = chu kỳ 2 lần sau khi hết 60s
-ip_banned = load_banned_ips() # Tự động nạp danh sách thiết bị cấm vĩnh viễn từ file
+ip_banned = set()      # Danh sách IP bị cấm vĩnh viễn (lưu trên RAM, restart là mất)
 
-# Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường (giữ lại giá trị cuối cùng, mặc định ban đầu là -- nếu chưa có)
+# Biến toàn cục lưu trữ dữ liệu đồng bộ từ sv1 và môi trường
 sv1_live_data = {
     "event": "waiting",
     "spoken_text": "Chưa có tương tác",
@@ -79,7 +58,6 @@ LOGIN_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Đăng nhập - AI Speaker Admin</title>
     <style>
-        /* Phông nền xanh da trời kết hợp hiệu ứng mây trôi */
         body { 
             font-family: Arial, sans-serif; 
             background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #6dd5ed 100%); 
@@ -93,7 +71,6 @@ LOGIN_TEMPLATE = """
             position: relative;
         }
 
-        /* Hiệu ứng mây bồng bềnh trôi từ trái sang phải */
         .cloud {
             position: absolute;
             background: rgba(255, 255, 255, 0.3);
@@ -125,7 +102,6 @@ LOGIN_TEMPLATE = """
             100% { transform: translateX(calc(100vw + 250px)); }
         }
 
-        /* Khung Admin Login trong suốt (Hiệu ứng kính mờ Glassmorphism) */
         .login-card { 
             background: rgba(255, 255, 255, 0.15); 
             backdrop-filter: blur(12px); 
@@ -139,11 +115,8 @@ LOGIN_TEMPLATE = """
         }
         
         h2 { text-align: center; color: #4CAF50; margin-top: 0; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        
         .form-group { margin-bottom: 15px; }
-        
         label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #ffeb3b; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
-        
         input[type="text"], input[type="password"] { width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.8); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 5px; color: #333; box-sizing: border-box; }
         input[type="text"]:focus, input[type="password"]:focus { background: #ffffff; outline: none; border-color: #4CAF50; }
         
@@ -154,25 +127,17 @@ LOGIN_TEMPLATE = """
         
         .checkbox-row { display: flex; align-items: center; margin-bottom: 20px; background: rgba(255, 255, 255, 0.2); padding: 10px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.3); }
         .checkbox-row input { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
-        
         .robot-label { margin-bottom: 0; cursor: pointer; color: #ff9800 !important; font-size: 0.95em; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         
-        /* Cấu hình các trạng thái màu sắc nút đăng nhập */
         .btn-submit { width: 100%; padding: 10px; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1em; box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: background 0.3s; }
         
-        /* 1. Xanh lá mặc định */
         .btn-green { background: #4CAF50; }
         .btn-green:hover { background: #43a047; }
-
-        /* 2. Màu vàng (khi sai lần 2) */
         .btn-yellow { background: #ff9800; color: #fff; }
         .btn-yellow:hover { background: #f57c00; }
-
-        /* 3. Màu đỏ (khi sai lần 3 / bước vào giai đoạn 2) */
         .btn-red { background: #f44336; }
         .btn-red:hover { background: #d32f2f; }
 
-        /* 4. Hiệu ứng nhấp nháy màu đỏ liên tục */
         @keyframes flashRed {
             0% { background-color: #f44336; opacity: 1; }
             50% { background-color: #b71c1c; opacity: 0.6; }
@@ -214,7 +179,6 @@ LOGIN_TEMPLATE = """
                 <input type="checkbox" id="robot" name="robot_check" {{ "disabled" if locked else "" }} required>
                 <label for="robot" class="robot-label">Tôi không phải là robot</label>
             </div>
-            <!-- Nút đăng nhập sẽ nhận class màu sắc động từ server/JS -->
             <button type="submit" id="submit-btn" class="btn-submit {{ btn_class }}" {{ "disabled" if locked and not is_banned else "" }}>
                 {{ "ĐANG BỊ KHÓA" if locked else "Đăng Nhập" }}
             </button>
@@ -263,7 +227,6 @@ LOGIN_TEMPLATE = """
                     passwordField.disabled = false;
                     robotCheckbox.disabled = false;
                     submitBtn.disabled = false;
-                    // Hết 60s chuyển sang giai đoạn 2: Nút đổi thành màu đỏ
                     submitBtn.className = "btn-submit btn-red";
                     submitBtn.innerText = "Đăng Nhập (2 lần cuối)";
                 }
@@ -446,11 +409,11 @@ def login_page():
     remaining_seconds = 0
     is_locked = False
     is_banned = False
-    btn_class = "btn-green"  # Mặc định ban đầu là màu xanh lá
+    btn_class = "btn-green"
 
-    # 1. Kiểm tra xem IP đã bị khóa vĩnh viễn chưa
+    # 1. Kiểm tra xem IP có nằm trong danh sách cấm vĩnh viễn trên RAM không
     if client_ip in ip_banned:
-        return render_template_string(LOGIN_TEMPLATE, error="IP của bạn đã bị KHÓA VĨNH VIỄN do nhập sai quá nhiều lần!", locked=True, is_banned=True, remaining_seconds=0, btn_class="btn-flash-red")
+        return render_template_string(LOGIN_TEMPLATE, error="Thiết bị của bạn đã bị KHÓA VĨNH VIỄN trong phiên này!", locked=True, is_banned=True, remaining_seconds=0, btn_class="btn-flash-red")
 
     # 2. Kiểm tra xem IP có đang trong thời gian khóa tạm thời 60s không
     if client_ip in ip_lockout_until:
@@ -461,7 +424,6 @@ def login_page():
             btn_class = "btn-green"
             error = f"Sai 3 lần! Tài khoản của bạn bị khóa tạm thời trong {remaining_seconds} giây."
         else:
-            # Hết 60 giây -> Chuyển sang giai đoạn 2 (2 lần cuối), nút đổi thành màu đỏ
             ip_lockout_until.pop(client_ip, None)
             ip_phase[client_ip] = 1
             ip_attempts[client_ip] = 0
@@ -481,25 +443,24 @@ def login_page():
             elif fails >= 2:
                 btn_class = ip_phase.get(client_ip, 0) == 1 and "btn-red" or "btn-yellow"
         elif username == ADMIN_USER and password == ADMIN_PASS:
-            # Đăng nhập đúng -> Xóa sạch lịch sử phạt
+            # Đúng mật khẩu -> Xóa lịch sử phạt trên RAM
             ip_attempts.pop(client_ip, None)
             ip_lockout_until.pop(client_ip, None)
             ip_phase.pop(client_ip, None)
             session['logged_in'] = True
             return redirect(url_for('dashboard'))
         else:
-            # Đăng nhập sai -> Tăng số lần sai
+            # Sai mật khẩu -> Tăng biến đếm trên RAM
             ip_attempts[client_ip] = ip_attempts.get(client_ip, 0) + 1
             fails = ip_attempts[client_ip]
             current_phase = ip_phase.get(client_ip, 0)
 
             if current_phase == 0:
-                # Giai đoạn 1 (3 lần đầu)
                 if fails == 1:
-                    btn_class = "btn-yellow"  # Sai lần 1: Nút chuyển sang màu vàng
+                    btn_class = "btn-yellow"
                     error = "Sai tài khoản hoặc mật khẩu! (Bạn còn 2 lần thử trước khi bị khóa tạm thời)."
                 elif fails == 2:
-                    btn_class = "btn-yellow"  # Sai lần 2: Vẫn giữ màu vàng hoặc chuyển cảnh báo
+                    btn_class = "btn-yellow"
                     error = "Sai tài khoản hoặc mật khẩu! (Bạn còn 1 lần thử cuối trước khi bị khóa tạm thời)."
                 else:
                     lock_duration = 60
@@ -509,16 +470,14 @@ def login_page():
                     btn_class = "btn-green"
                     error = f"Sai 3 lần! Tài khoản bị khóa tạm thời trong {remaining_seconds} giây."
             else:
-                # Giai đoạn 2 (Sau 60s, 2 lần cuối)
                 if fails >= 2:
-                    ip_banned.add(client_ip)
-                    save_banned_ips()
+                    ip_banned.add(client_ip)  # Cấm vĩnh viễn trên RAM
                     is_locked = True
                     is_banned = True
-                    btn_class = "btn-flash-red"  # Sai quá số lần -> Nhấp nháy màu đỏ
+                    btn_class = "btn-flash-red"
                     error = "Phát hiện thiết bị không an toàn! Thiết bị này đã bị khóa VĨNH VIỄN."
                 else:
-                    btn_class = "btn-red"  # Sai lần đầu ở giai đoạn 2
+                    btn_class = "btn-red"
                     remaining_tries = 2 - fails
                     error = f"Cảnh báo! Bạn chỉ còn {remaining_tries} lần thử cuối cùng trước khi thiết bị bị khóa vĩnh viễn."
 
@@ -546,8 +505,6 @@ def sync_from_sv1():
             else:
                 if value is not None:
                     sv1_live_data[key] = value
-                    
-        print(f"[sv2] Nhận sync từ sv1 thành công. Lưu trữ hiện tại -> Phòng: {sv1_live_data.get('room_temp')}°C, {sv1_live_data.get('room_hum')}%")
         return jsonify({"status": "success"}), 200
     return jsonify({"status": "error"}), 400
 
